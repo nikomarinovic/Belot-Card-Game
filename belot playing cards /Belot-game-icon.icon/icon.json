@@ -1,0 +1,30 @@
+{
+  "fill" : {
+    "automatic-gradient" : "display-p3:0.09430,0.23523,0.12140,1.00000"
+  },
+  "groups" : [
+    {
+      "blur-material" : null,
+      "layers" : [
+        {
+          "image-name" : "Lucid_Origin_a_Belot_card_game_app_icon_featuring_only_4_cards_1.jpg",
+          "name" : "Lucid_Origin_a_Belot_card_game_app_icon_featuring_only_4_cards_1"
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}
