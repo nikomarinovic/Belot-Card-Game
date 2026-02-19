@@ -422,10 +422,7 @@ class GameManager: ObservableObject {
         return hasBaba && hasKralj
     }
 
-    // FIX 1c: checkBelaOnPlay is called from playCard() AFTER the card is removed from hand.
-    // We check whether the player still holds the partner card. This guarantees bela
-    // is only called when both baba and kralj are/were in the hand, and belaCalledThisRound
-    // ensures it is counted at most once per round.
+
     func checkBelaOnPlay(player: Player, card: Card) {
         guard !belaCalledThisRound else { return }
         guard let trump else { return }
@@ -450,9 +447,7 @@ class GameManager: ObservableObject {
         showBelaPrompt = false
         let playerIdx = players.firstIndex(where: { $0.id == player.id }) ?? 0
         let t = team(for: playerIdx)
-        // FIX 1d: Add bela +20 only to the calling player's team's pending meld.
-        // This is separate from sequence/group melds and is always valid regardless
-        // of which team won the meld comparison.
+
         if t == 1 { pendingMeldTeam1 += 20 } else { pendingMeldTeam2 += 20 }
         debugPrint("[Bela] \(player.name) zvao belu +20 → Team \(t)")
     }
@@ -484,13 +479,11 @@ class GameManager: ObservableObject {
         }
 
         illegalCardMessage = nil
-        // FIX 2: Remove the card from hand BEFORE checkBelaOnPlay so that
-        // the partner-card check correctly reflects the remaining hand.
+
         hands[player.id]?.remove(at: indexInHand)
         playedCards.append(PlayedCard(playerIndex: currentPlayerIndex, card: card))
         debugPrint("[Play] \(player.name) → \(card.rank)/\(card.suit)")
 
-        // Check bela after the card is removed (partner must still be in hand)
         checkBelaOnPlay(player: player, card: card)
 
         if playedCards.count < players.count {
@@ -531,9 +524,7 @@ class GameManager: ObservableObject {
     }
 
     // MARK: pobjednik stiha
-    // FIX 2: determineWinnerOfTrick is correct as written, but clarified with comments.
-    // Trump cards always beat non-trump. Among trump cards, trump rank order applies.
-    // If no trump played, highest card of lead suit wins.
+
     private func determineWinnerOfTrick(_ trick: [PlayedCard]) -> Int {
         guard !trick.isEmpty else { return dealerIndex }
 
@@ -555,7 +546,6 @@ class GameManager: ObservableObject {
             return nonTrOrd[card.rank] ?? 0
         }
 
-        // Trumps always win over non-trumps
         if let ts = trumpSuit {
             let trumpsPlayed = trick.filter { $0.card.suit == ts }
             if !trumpsPlayed.isEmpty {
@@ -563,14 +553,12 @@ class GameManager: ObservableObject {
             }
         }
 
-        // No trump played: highest card of lead suit wins
         let leadSuit = trick.first!.card.suit
         let leadCards = trick.filter { $0.card.suit == leadSuit }
         return leadCards.max(by: { strength($0.card) < strength($1.card) })!.playerIndex
     }
 
     // MARK: dobitak stiha zbroj bodova
-    // FIX 2: scoreTrick correctly uses cardValue() which already respects trump suit.
     private func scoreTrick(_ trick: [PlayedCard], winnerIndex: Int) {
         let pts = trick.reduce(0) { $0 + cardValue($1.card) }
         if team(for: winnerIndex) == 1 {
@@ -581,9 +569,7 @@ class GameManager: ObservableObject {
     }
 
     // MARK: zadnji stih
-    // FIX 3: The fall (pad) mechanic now correctly compares TOTAL points
-    // (tricks + melds) for the calling team vs the opposing team,
-    // in accordance with standard Belot rules.
+
     private func finalizeRoundScores(lastWinnerIndex: Int) {
         // +10 za zadnji stih
         if team(for: lastWinnerIndex) == 1 {
@@ -595,22 +581,17 @@ class GameManager: ObservableObject {
         let trumpChooserIndex = players.firstIndex(where: { $0.id == trumpChooser?.id }) ?? 0
         let callerTeam = team(for: trumpChooserIndex)
 
-        // Trick-only points at end of round (including last-trick bonus)
         let trickT1 = roundScoreTeam1
         let trickT2 = roundScoreTeam2
 
-        // Total meld points (sequences + bela if called) pending for each team
         let meldT1 = pendingMeldTeam1
         let meldT2 = pendingMeldTeam2
 
-        // FIX 3: Fall is determined by comparing TOTAL points (tricks + melds).
-        // The calling team must have strictly MORE total points than the opponent.
         let totalT1 = trickT1 + meldT1
         let totalT2 = trickT2 + meldT2
 
         let callerFell: Bool
         if callerTeam == 1 {
-            // Caller falls if they don't have strictly more total points
             callerFell = totalT1 <= totalT2
         } else {
             callerFell = totalT2 <= totalT1
