@@ -521,6 +521,23 @@ struct CardBoxView: View {
     }
     private var isActive: Bool { isMyTrumpTurn || (manager.trump != nil && isMyTurn) }
 
+    // MARK: sortiranje karata za prikaz
+    
+    private let suitOrder: [String: Int] = [
+        "herc": 0, "karo": 1, "tref": 2, "pik": 3
+    ]
+
+    private var sortedHand: [Card] {
+        hand.sorted { a, b in
+            let suitA = suitOrder[a.suit] ?? 99
+            let suitB = suitOrder[b.suit] ?? 99
+            if suitA != suitB { return suitA < suitB }
+            let rankA = manager.rankOrder[a.rank] ?? 0
+            let rankB = manager.rankOrder[b.rank] ?? 0
+            return rankA < rankB
+        }
+    }
+
     var body: some View {
         VStack(spacing: 2) {
             Text(statusMessage())
@@ -536,8 +553,10 @@ struct CardBoxView: View {
                         HStack(spacing: 10) {
                             ForEach(0..<4) { col in
                                 let idx = row * 4 + col
-                                if hand.indices.contains(idx) {
-                                    let card = hand[idx]
+                                // Use sortedHand for display only; game logic still uses
+                                // the original hand array held by the manager.
+                                if sortedHand.indices.contains(idx) {
+                                    let card = sortedHand[idx]
                                     let hide = idx >= 6 && manager.trump == nil && !revealedAfterPass
                                     if hide {
                                         RoundedRectangle(cornerRadius: 6)

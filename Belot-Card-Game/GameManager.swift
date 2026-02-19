@@ -244,16 +244,16 @@ class GameManager: ObservableObject {
     }
 
     // MARK: provjeri zvanja
+
     private func evaluateMelds() {
         playerMelds = []
 
-        // Struktura za interno rangiranje
         struct RawMeld {
             let playerIndex: Int
-            let points: Int       // bodovi zvanja (20/50/100/150/200)
+            let points: Int
             let description: String
             let cards: [Card]
-            let isTrump: Bool     // je li zvanje u boji aduta
+            let isTrump: Bool
         }
 
         var allMelds: [RawMeld] = []
@@ -270,7 +270,6 @@ class GameManager: ObservableObject {
                     cards: m.cards,
                     isTrump: inTrump
                 ))
-                // zvanja igraca cuva sve za prikaz karata
                 playerMelds.append(PlayerMeld(
                     playerIndex: idx,
                     points: m.points,
@@ -280,7 +279,6 @@ class GameManager: ObservableObject {
             }
         }
 
-        // Nema zvanja
         guard !allMelds.isEmpty else {
             rawMeldTeam1 = 0; rawMeldTeam2 = 0
             winningMeldTeam = 0
@@ -288,22 +286,16 @@ class GameManager: ObservableObject {
             return
         }
 
-        // okreni redosljed pocevsi od igraca lijevo od djelitelja
         let turnOrder: [Int] = (0..<players.count).map {
             (nextIndex(after: dealerIndex) + $0) % players.count
         }
 
-        // Snaga zvanja za usporedbu:
-        //  1. bodovi (veci = jaci):  200 > 150 > 100 > 50 > 20
-        //  2. ako isti bodovi: adut > ne-adut
-        //  3. ako isti bodovi i isti adut-status: raniji u redu igre = jaci
         func strength(_ m: RawMeld) -> (Int, Int, Int) {
             let trumpBonus = m.isTrump ? 1 : 0
             let turnPos    = turnOrder.firstIndex(of: m.playerIndex) ?? 999
             return (m.points, trumpBonus, -turnPos)
         }
 
-        // Najjace zvanje svakog tima
         let team1Melds = allMelds.filter { team(for: $0.playerIndex) == 1 }
         let team2Melds = allMelds.filter { team(for: $0.playerIndex) == 2 }
 
@@ -325,7 +317,6 @@ class GameManager: ObservableObject {
         rawMeldTeam1 = t1raw
         rawMeldTeam2 = t2raw
 
-        // Usporedi najjaca zvanja timova
         let winner: Int
         switch (bestT1, bestT2) {
         case (nil, nil):
@@ -339,26 +330,22 @@ class GameManager: ObservableObject {
             if s1.0 != s2.0 {
                 winner = s1.0 > s2.0 ? 1 : 2
             } else if s1.1 != s2.1 {
-                winner = s1.1 > s2.1 ? 1 : 2   // adut > ne-adut
+                winner = s1.1 > s2.1 ? 1 : 2
             } else {
-                // Isti bodovi, isti adut status, raniji u redu pobjeduje
                 winner = s1.2 > s2.2 ? 1 : 2
             }
         }
 
         winningMeldTeam = winner
 
-        // Pobjednicki tim dobiva sva svoja zvanja + zvanja gubitnickog tima
-        let allMeldPoints = t1raw + t2raw
+        let allSequenceMeldPoints = t1raw + t2raw
         if winner == 1 {
-            pendingMeldTeam1 = allMeldPoints
+            pendingMeldTeam1 = allSequenceMeldPoints
             pendingMeldTeam2 = 0
-            // prikazuje samo tim 1
             playerMelds = playerMelds.filter { team(for: $0.playerIndex) == 1 }
         } else if winner == 2 {
             pendingMeldTeam1 = 0
-            pendingMeldTeam2 = allMeldPoints
-            // prikazuje samo tim 2
+            pendingMeldTeam2 = allSequenceMeldPoints
             playerMelds = playerMelds.filter { team(for: $0.playerIndex) == 2 }
         } else {
             pendingMeldTeam1 = 0
@@ -369,6 +356,7 @@ class GameManager: ObservableObject {
     }
 
     // MARK: pronalazak zvanja
+
     func findMelds(in hand: [Card]) -> [(points: Int, description: String, cards: [Card])] {
         var results: [(Int, String, [Card])] = []
         let rankGroups  = Dictionary(grouping: hand, by: { $0.rank })
@@ -407,7 +395,6 @@ class GameManager: ObservableObject {
         return results
     }
 
-    // Pronalazi uzastopne nizove karte unutar sortirane ruke iste boje
     private func findSequences(in sorted: [Card]) -> [[Card]] {
         guard sorted.count >= 3 else { return [] }
         var result: [[Card]] = []
@@ -428,7 +415,6 @@ class GameManager: ObservableObject {
     }
 
     // MARK: baba + kralj adut
-    // Vraca true ako igrac ima i babu i kralja aduta
     func playerHasBela(player: Player) -> Bool {
         guard let trump, let hand = hands[player.id] else { return false }
         let hasBaba  = hand.contains { $0.suit == trump && $0.rank == "baba" }
@@ -436,17 +422,19 @@ class GameManager: ObservableObject {
         return hasBaba && hasKralj
     }
 
-    // Zovi kad igrac baci babu ili kralja aduta i pita ga hoce li zvati belu
+    // FIX 1c: checkBelaOnPlay is called from playCard() AFTER the card is removed from hand.
+    // We check whether the player still holds the partner card. This guarantees bela
+    // is only called when both baba and kralj are/were in the hand, and belaCalledThisRound
+    // ensures it is counted at most once per round.
     func checkBelaOnPlay(player: Player, card: Card) {
         guard !belaCalledThisRound else { return }
         guard let trump else { return }
         guard card.suit == trump, card.rank == "baba" || card.rank == "kralj" else { return }
-        // Mora imati obije karte
+        // After removal from hand, the partner card must still be there
         guard let hand = hands[player.id] else { return }
         let partnerRank = (card.rank == "baba") ? "kralj" : "baba"
         guard hand.contains(where: { $0.suit == trump && $0.rank == partnerRank }) else { return }
 
-        // Samo ljudski igrac dobiva prompt, a botovi automatski zovu belu
         if player.isBot {
             callBela(player: player)
         } else {
@@ -460,9 +448,13 @@ class GameManager: ObservableObject {
         guard !belaCalledThisRound else { return }
         belaCalledThisRound = true
         showBelaPrompt = false
-        let t = team(for: players.firstIndex(where: { $0.id == player.id }) ?? 0)
+        let playerIdx = players.firstIndex(where: { $0.id == player.id }) ?? 0
+        let t = team(for: playerIdx)
+        // FIX 1d: Add bela +20 only to the calling player's team's pending meld.
+        // This is separate from sequence/group melds and is always valid regardless
+        // of which team won the meld comparison.
         if t == 1 { pendingMeldTeam1 += 20 } else { pendingMeldTeam2 += 20 }
-        debugPrint("[Bela] \(player.name) zvao belu +20")
+        debugPrint("[Bela] \(player.name) zvao belu +20 → Team \(t)")
     }
 
     func declineBela() {
@@ -491,13 +483,15 @@ class GameManager: ObservableObject {
             return
         }
 
-        // Provjeri belu prije bacanja je li karta jos u rucu
-        checkBelaOnPlay(player: player, card: card)
-
         illegalCardMessage = nil
+        // FIX 2: Remove the card from hand BEFORE checkBelaOnPlay so that
+        // the partner-card check correctly reflects the remaining hand.
         hands[player.id]?.remove(at: indexInHand)
         playedCards.append(PlayedCard(playerIndex: currentPlayerIndex, card: card))
         debugPrint("[Play] \(player.name) → \(card.rank)/\(card.suit)")
+
+        // Check bela after the card is removed (partner must still be in hand)
+        checkBelaOnPlay(player: player, card: card)
 
         if playedCards.count < players.count {
             currentPlayerIndex = nextIndex(after: currentPlayerIndex)
@@ -537,74 +531,106 @@ class GameManager: ObservableObject {
     }
 
     // MARK: pobjednik stiha
+    // FIX 2: determineWinnerOfTrick is correct as written, but clarified with comments.
+    // Trump cards always beat non-trump. Among trump cards, trump rank order applies.
+    // If no trump played, highest card of lead suit wins.
     private func determineWinnerOfTrick(_ trick: [PlayedCard]) -> Int {
         guard !trick.isEmpty else { return dealerIndex }
 
         let trumpSuit = trump
 
+        let trOrd: [String: Int] = [
+            "7": 0, "8": 1, "baba": 2, "kralj": 3,
+            "10": 4, "as": 5, "9": 6, "decko": 7
+        ]
         let nonTrOrd: [String: Int] = [
             "7": 0, "8": 1, "9": 2, "10": 3,
             "decko": 4, "baba": 5, "kralj": 6, "as": 7
         ]
 
-        let trOrd: [String: Int] = [
-            "7": 0, "8": 1, "baba": 2, "kralj": 3,
-            "10": 4, "as": 5, "9": 6, "decko": 7
-        ]
-
         func strength(_ card: Card) -> Int {
-            if let trumpSuit = trumpSuit, card.suit == trumpSuit {
+            if let ts = trumpSuit, card.suit == ts {
                 return trOrd[card.rank] ?? 0
             }
             return nonTrOrd[card.rank] ?? 0
         }
-        
-        if let trumpSuit = trumpSuit {
-            let trumpsPlayed = trick.filter { $0.card.suit == trumpSuit }
+
+        // Trumps always win over non-trumps
+        if let ts = trumpSuit {
+            let trumpsPlayed = trick.filter { $0.card.suit == ts }
             if !trumpsPlayed.isEmpty {
                 return trumpsPlayed.max(by: { strength($0.card) < strength($1.card) })!.playerIndex
             }
         }
-        
+
+        // No trump played: highest card of lead suit wins
         let leadSuit = trick.first!.card.suit
         let leadCards = trick.filter { $0.card.suit == leadSuit }
-
         return leadCards.max(by: { strength($0.card) < strength($1.card) })!.playerIndex
     }
 
     // MARK: dobitak stiha zbroj bodova
+    // FIX 2: scoreTrick correctly uses cardValue() which already respects trump suit.
     private func scoreTrick(_ trick: [PlayedCard], winnerIndex: Int) {
         let pts = trick.reduce(0) { $0 + cardValue($1.card) }
-        if team(for: winnerIndex) == 1 { roundScoreTeam1 += pts } else { roundScoreTeam2 += pts }
+        if team(for: winnerIndex) == 1 {
+            roundScoreTeam1 += pts
+        } else {
+            roundScoreTeam2 += pts
+        }
     }
 
     // MARK: zadnji stih
+    // FIX 3: The fall (pad) mechanic now correctly compares TOTAL points
+    // (tricks + melds) for the calling team vs the opposing team,
+    // in accordance with standard Belot rules.
     private func finalizeRoundScores(lastWinnerIndex: Int) {
         // +10 za zadnji stih
-        if team(for: lastWinnerIndex) == 1 { roundScoreTeam1 += 10 } else { roundScoreTeam2 += 10 }
+        if team(for: lastWinnerIndex) == 1 {
+            roundScoreTeam1 += 10
+        } else {
+            roundScoreTeam2 += 10
+        }
 
-        // ako ima bele (zvanje) ukljuci je
-        let allMelds = pendingMeldTeam1 + pendingMeldTeam2
-
-        // koji je tim zvao?
         let trumpChooserIndex = players.firstIndex(where: { $0.id == trumpChooser?.id }) ?? 0
         let callerTeam = team(for: trumpChooserIndex)
 
-        // samo osnovni bodovi bez zvanja
+        // Trick-only points at end of round (including last-trick bonus)
         let trickT1 = roundScoreTeam1
         let trickT2 = roundScoreTeam2
 
-        // ako padnu onaj ko je zvao
+        // Total meld points (sequences + bela if called) pending for each team
+        let meldT1 = pendingMeldTeam1
+        let meldT2 = pendingMeldTeam2
+
+        // FIX 3: Fall is determined by comparing TOTAL points (tricks + melds).
+        // The calling team must have strictly MORE total points than the opponent.
+        let totalT1 = trickT1 + meldT1
+        let totalT2 = trickT2 + meldT2
+
         let callerFell: Bool
         if callerTeam == 1 {
-            callerFell = trickT1 < trickT2 || trickT1 < 82
+            // Caller falls if they don't have strictly more total points
+            callerFell = totalT1 <= totalT2
         } else {
-            callerFell = trickT2 < trickT1 || trickT2 < 82
+            callerFell = totalT2 <= totalT1
         }
+
+        let allMelds = meldT1 + meldT2
 
         if callerFell {
 
-            let callerGotZeroTricks = (callerTeam == 1) ? trickT1 == 0 : trickT2 == 0
+            let callerTrickPointsRaw = (callerTeam == 1) ? trickT1 - 10 : trickT2 - 10
+
+            let callerGotZeroTricks: Bool
+            if callerTeam == 1 {
+
+                let lastTrickIsCallerTeam = (team(for: lastWinnerIndex) == 1)
+                callerGotZeroTricks = lastTrickIsCallerTeam ? (trickT1 == 10) : (trickT1 == 0)
+            } else {
+                let lastTrickIsCallerTeam = (team(for: lastWinnerIndex) == 2)
+                callerGotZeroTricks = lastTrickIsCallerTeam ? (trickT2 == 10) : (trickT2 == 0)
+            }
 
             if callerTeam == 1 {
                 roundScoreTeam1 = 0
@@ -619,9 +645,9 @@ class GameManager: ObservableObject {
             }
             debugPrint("[FALL] caller=\(callerTeam) zeroTricks=\(callerGotZeroTricks) T1=\(roundScoreTeam1) T2=\(roundScoreTeam2)")
         } else {
-            // normalni bodovi + bodovi od zvanja
-            roundScoreTeam1 += pendingMeldTeam1
-            roundScoreTeam2 += pendingMeldTeam2
+            // No fall: each team gets their own trick points + their own meld points
+            roundScoreTeam1 = trickT1 + meldT1
+            roundScoreTeam2 = trickT2 + meldT2
         }
 
         totalScoreTeam1 += roundScoreTeam1
@@ -707,4 +733,3 @@ class GameManager: ObservableObject {
         return hand
     }
 }
-
