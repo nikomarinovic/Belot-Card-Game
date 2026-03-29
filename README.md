@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="public/logo.svg" alt="Belot Card Game Logo" width="96" />
+  <img src="public/logo.png" alt="Belot Card Game Logo" width="96" />
   <br />
   Belot Card Game
 </h1>
